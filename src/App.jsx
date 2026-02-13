@@ -62,7 +62,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   
-  // [FIX] 改用 useRef 來抓取輸入框的值，解決中文輸入法打字會因為 Re-render 而中斷的問題
+  // ref for project input
   const newProjectInputRef = useRef(null);
 
   // --- Form State ---
@@ -128,7 +128,6 @@ export default function App() {
   // --- Actions ---
   const handleCreateProject = async (e) => {
     e.preventDefault();
-    // [FIX] 從 ref 讀取當前的值
     const projectName = newProjectInputRef.current?.value;
 
     if (!projectName || !projectName.trim()) return;
@@ -138,7 +137,6 @@ export default function App() {
         name: projectName,
         createdAt: new Date().toISOString()
       });
-      // [FIX] 清空 input 並關閉視窗
       if(newProjectInputRef.current) newProjectInputRef.current.value = '';
       setShowNewProjectModal(false);
     } catch (error) {
@@ -252,7 +250,6 @@ export default function App() {
           <div className="w-full bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-2xl">
             <h3 className="text-white font-bold mb-3">建立新專案</h3>
             <form onSubmit={handleCreateProject}>
-              {/* [FIX] 這裡改用 ref，移除 value 和 onChange，解決輸入法衝突 */}
               <input 
                 ref={newProjectInputRef}
                 autoFocus 
@@ -374,13 +371,23 @@ export default function App() {
       <form onSubmit={handleSavePost} className="p-6 space-y-6">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">標題</label>
-          <input required className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="請輸入文章標題..." />
+          <input 
+            required 
+            className="w-full bg-white text-slate-900 px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none" 
+            value={formData.title} 
+            onChange={e => setFormData({...formData, title: e.target.value})} 
+            placeholder="請輸入文章標題..." 
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">所屬章節</label>
-            <select className="w-full px-4 py-2 rounded-lg border border-slate-300 bg-white" value={formData.subChapter} onChange={e => setFormData({...formData, subChapter: e.target.value})}>
+            <select 
+              className="w-full bg-white text-slate-900 px-4 py-2 rounded-lg border border-slate-300" 
+              value={formData.subChapter} 
+              onChange={e => setFormData({...formData, subChapter: e.target.value})}
+            >
               {SUB_CHAPTERS.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
             </select>
           </div>
@@ -403,7 +410,14 @@ export default function App() {
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">內容</label>
-          <textarea required rows="12" className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none font-mono text-sm" value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} placeholder="支援純文字..." />
+          <textarea 
+            required 
+            rows="12" 
+            className="w-full bg-white text-slate-900 px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none font-mono text-sm" 
+            value={formData.content} 
+            onChange={e => setFormData({...formData, content: e.target.value})} 
+            placeholder="支援純文字..." 
+          />
         </div>
 
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
