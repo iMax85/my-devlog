@@ -66,7 +66,7 @@ const compressImage = (file) => {
 
 // --- Components ---
 
-// 1. 樹狀側邊欄元件 (大幅更新：支援動態章節)
+// 1. 樹狀側邊欄元件 (維持不變)
 const TreeSidebar = ({ 
   projects, chapters, posts, selectedPost, onSelectPost, 
   onCreateProject, onDeleteProject, 
@@ -123,7 +123,7 @@ const TreeSidebar = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
           <h1 className="font-bold text-white tracking-wider flex items-center gap-2">
-            <Layout className="text-emerald-400" size={20} /> DevLog
+            <Layout className="text-emerald-400" size={20} /> 佳美資訊
           </h1>
           <button onClick={() => setIsMobileOpen(false)} className="md:hidden"><X size={20} /></button>
         </div>
@@ -161,7 +161,7 @@ const TreeSidebar = ({
                     
                     {projectChapters.map(chap => {
                       const isChapExpanded = expandedChapters[chap.id];
-                      const chapterPosts = posts.filter(p => p.subChapter === chap.id); // subChapter now stores chapterId
+                      const chapterPosts = posts.filter(p => p.subChapter === chap.id); 
                       
                       return (
                         <div key={chap.id}>
@@ -257,7 +257,7 @@ const TreeSidebar = ({
   );
 };
 
-// 2. 區塊編輯器 (Block Editor)
+// 2. 區塊編輯器 (Block Editor) - 寬度修正版
 const BlockEditor = ({ post, chapters, onSave, onDelete }) => {
   const initialBlocks = post.blocks || [
     { type: 'text', content: post.content || '' },
@@ -337,7 +337,8 @@ const BlockEditor = ({ post, chapters, onSave, onDelete }) => {
   const currentChapterName = chapters.find(c => c.id === post.subChapter)?.name || "未知章節";
 
   return (
-    <div className="max-w-4xl mx-auto p-6 md:p-10 pb-32">
+    // [Mod] 將 max-w-4xl 改為 max-w-[1600px]，讓編輯區寬度翻倍
+    <div className="max-w-[1600px] mx-auto p-6 md:p-10 pb-32">
       {/* 頂部工具列 */}
       <div className="flex justify-between items-center mb-6 sticky top-0 bg-white/90 backdrop-blur z-20 py-4 border-b border-slate-100">
         <div className="text-sm text-slate-500 flex items-center gap-2">
