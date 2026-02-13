@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, Plus, Trash2, Edit3, Save, X, 
   Search, Menu, ChevronRight, Layout, Upload, 
@@ -13,12 +13,11 @@ import {
 } from 'firebase/firestore';
 
 // --- Firebase Configuration ---
-// 請確認這段設定與您 Firebase Console 中的一致
 const firebaseConfig = {
-  apiKey: "AIzaSyDNJjp4khyFQ3rFzfvt0qjLskggC8YgIhk", // 請填回您真實的 API Key
+  apiKey: "AIzaSyDNJjp4khyFQ3rFzfvt0qjLskggC8YgIhk",
   authDomain: "devlogformax85.firebaseapp.com",
   projectId: "devlogformax85",
-  storageBucket: "devlogformax85.firebasestorage.app", // 雖然不用 Storage，但保留 config 沒關係
+  storageBucket: "devlogformax85.firebasestorage.app",
   messagingSenderId: "65839306064",
   appId: "1:65839306064:web:868e99c27741b6ab28c855",
   measurementId: "G-EV1NM1JNJR"
@@ -62,14 +61,16 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
+  
+  // [FIX] 改用 useRef 來抓取輸入框的值，解決中文輸入法打字會因為 Re-render 而中斷的問題
+  const newProjectInputRef = useRef(null);
 
   // --- Form State ---
   const [formData, setFormData] = useState({
     title: '',
     subChapter: 'concept',
     content: '',
-    image: null // 這裡將直接儲存 Base64 字串
+    image: null
   });
 
   // --- Data Fetching ---
@@ -127,13 +128,18 @@ export default function App() {
   // --- Actions ---
   const handleCreateProject = async (e) => {
     e.preventDefault();
-    if (!newProjectName.trim()) return;
+    // [FIX] 從 ref 讀取當前的值
+    const projectName = newProjectInputRef.current?.value;
+
+    if (!projectName || !projectName.trim()) return;
+    
     try {
       await addDoc(collection(db, "projects"), {
-        name: newProjectName,
+        name: projectName,
         createdAt: new Date().toISOString()
       });
-      setNewProjectName('');
+      // [FIX] 清空 input 並關閉視窗
+      if(newProjectInputRef.current) newProjectInputRef.current.value = '';
       setShowNewProjectModal(false);
     } catch (error) {
       alert("新增失敗: " + error.message);
@@ -246,7 +252,14 @@ export default function App() {
           <div className="w-full bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-2xl">
             <h3 className="text-white font-bold mb-3">建立新專案</h3>
             <form onSubmit={handleCreateProject}>
-              <input autoFocus type="text" placeholder="專案名稱" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white mb-3 focus:ring-2 focus:ring-emerald-500 outline-none" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} />
+              {/* [FIX] 這裡改用 ref，移除 value 和 onChange，解決輸入法衝突 */}
+              <input 
+                ref={newProjectInputRef}
+                autoFocus 
+                type="text" 
+                placeholder="專案名稱" 
+                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white mb-3 focus:ring-2 focus:ring-emerald-500 outline-none" 
+              />
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setShowNewProjectModal(false)} className="px-3 py-1.5 text-slate-400 text-sm hover:text-white">取消</button>
                 <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium">建立</button>
@@ -403,45 +416,13 @@ export default function App() {
     </div>
   );
 
-  const PostDetail = () => (
-    <div className="max-w-4xl mx-auto p-8">
-      <button onClick={() => setView('project')} className="mb-6 flex items-center gap-2 text-slate-500 hover:text-emerald-600 font-medium">
-        <ChevronRight className="rotate-180" size={18} /> 回到 {selectedProject?.name}
-      </button>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        {selectedPost.image && (
-          <div className="w-full h-80 bg-slate-100">
-            <img src={selectedPost.image} alt={selectedPost.title} className="w-full h-full object-contain bg-slate-900" />
-          </div>
-        )}
-        <div className="p-8">
-          <div className="flex items-center gap-3 mb-4">
-            <span className={`text-xs font-bold px-3 py-1 rounded-full ${selectedPost.subChapter === 'concept' ? 'bg-blue-100 text-blue-700' : selectedPost.subChapter === 'implementation' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'}`}>
-              {SUB_CHAPTERS.find(s => s.id === selectedPost.subChapter)?.name}
-            </span>
-            <span className="text-slate-400 text-sm">{selectedPost.date}</span>
-          </div>
-          <h1 className="text-4xl font-bold text-slate-900 mb-8">{selectedPost.title}</h1>
-          <div className="prose prose-slate max-w-none text-lg text-slate-700 whitespace-pre-line">
-            {selectedPost.content}
-          </div>
-          <div className="mt-12 pt-6 border-t border-slate-100 flex justify-end gap-3">
-            <button onClick={() => prepareEdit(selectedPost)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-50 border border-slate-200"><Edit3 size={18} /> 編輯</button>
-            <button onClick={() => handleDeletePost(selectedPost.id)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100"><Trash2 size={18} /> 刪除</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY_HERE") {
+  if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white p-6 text-center">
         <AlertCircle size={64} className="text-emerald-400 mb-6" />
         <h1 className="text-3xl font-bold mb-4">請設定 Firebase</h1>
         <p className="max-w-md text-slate-400 mb-8">
-          請在 <code>App.jsx</code> 中第 18 行填入您的 Firebase API Key。
+          無需升級方案！請將您之前複製的 <code>firebaseConfig</code> 填入程式碼中即可使用。
         </p>
       </div>
     );
