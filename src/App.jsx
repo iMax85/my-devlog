@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, Plus, Trash2, Edit3, Save, X, 
-  Search, Menu, ChevronRight, Layout, Upload, 
-  FolderPlus, Folder, Layers, FileText, HelpCircle, AlertCircle, Image as ImageIcon
+  Search, Menu, ChevronRight, ChevronDown, Layout, Upload, 
+  FolderPlus, Folder, FileText, HelpCircle, AlertCircle, 
+  Image as ImageIcon, MoreVertical, Type, MoveUp, MoveDown,
+  FolderOpen, PenLine
 } from 'lucide-react';
 
 // --- Firebase SDK Imports ---
@@ -14,7 +16,7 @@ import {
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
-  apiKey: "AIzaSyDNJjp4khyFQ3rFzfvt0qjLskggC8YgIhk",
+  apiKey: "AIzaSyDNJjp4khyFQ3rFzfvt0qjLskggC8YgIhk", // 請確認這裡填回您的 API Key
   authDomain: "devlogformax85.firebaseapp.com",
   projectId: "devlogformax85",
   storageBucket: "devlogformax85.firebasestorage.app",
@@ -31,23 +33,7 @@ try {
   console.error("Firebase 初始化失敗:", error);
 }
 
-// --- Constants & Helpers ---
-const SUB_CHAPTERS = [
-  { id: 'concept', name: '觀念說明', icon: BookOpen },
-  { id: 'implementation', name: '實作範例', icon: Code },
-  { id: 'qa', name: 'QA & Debug', icon: HelpCircle },
-];
-
-function Code({size, className}) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <polyline points="16 18 22 12 16 6"></polyline>
-      <polyline points="8 6 2 12 8 18"></polyline>
-    </svg>
-  );
-}
-
-// 圖片壓縮邏輯 (移至外部)
+// --- Helpers ---
 const compressImage = (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -78,493 +64,532 @@ const compressImage = (file) => {
   });
 };
 
-// --- Sub-Components (移至 App 外部以解決輸入法問題) ---
+// --- Components ---
 
-const Sidebar = ({ 
-  isSidebarOpen, setIsSidebarOpen, 
-  showNewProjectModal, setShowNewProjectModal, 
-  projects, selectedProject, setSelectedProject, 
-  setView, setSelectedSubChapter, 
-  onCreateProject, onDeleteProject 
+// 1. 樹狀側邊欄元件 (大幅更新：支援動態章節)
+const TreeSidebar = ({ 
+  projects, chapters, posts, selectedPost, onSelectPost, 
+  onCreateProject, onDeleteProject, 
+  onCreateChapter, onEditChapter, onDeleteChapter,
+  onCreatePost 
 }) => {
+  const [expandedProjects, setExpandedProjects] = useState({});
+  const [expandedChapters, setExpandedChapters] = useState({});
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const inputRef = useRef(null);
 
-  const handleSubmit = (e) => {
+  const toggleProject = (pid) => {
+    setExpandedProjects(prev => ({ ...prev, [pid]: !prev[pid] }));
+  };
+
+  const toggleChapter = (chapId) => {
+    setExpandedChapters(prev => ({ ...prev, [chapId]: !prev[chapId] }));
+  };
+
+  const handleCreateProjectSubmit = (e) => {
     e.preventDefault();
-    const val = inputRef.current?.value;
-    if (val) {
-      onCreateProject(val);
-      if(inputRef.current) inputRef.current.value = '';
+    if (inputRef.current?.value) {
+      onCreateProject(inputRef.current.value);
+      inputRef.current.value = '';
+    }
+  };
+
+  const handleAddChapterClick = (projectId) => {
+    const name = window.prompt("請輸入新章節名稱 (例如：API 規格)：");
+    if (name) onCreateChapter(projectId, name);
+  };
+
+  const handleEditChapterClick = (e, chapter) => {
+    e.stopPropagation();
+    const newName = window.prompt("修改章節名稱：", chapter.name);
+    if (newName && newName !== chapter.name) {
+      onEditChapter(chapter.id, newName);
     }
   };
 
   return (
-    <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-slate-100 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col shadow-xl`}>
-      <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-        <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-300 bg-clip-text text-transparent">
-          佳美 資訊課
-        </h1>
-        <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-white"><X size={20} /></button>
-      </div>
-      <div className="p-4 flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between mb-4 px-2">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">專案列表</span>
-          <button onClick={() => setShowNewProjectModal(true)} className="text-emerald-400 hover:text-emerald-300 p-1 hover:bg-slate-800 rounded transition-colors"><FolderPlus size={18} /></button>
-        </div>
-        <div className="space-y-1">
-          <button onClick={() => { setSelectedProject(null); setView('dashboard'); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${!selectedProject ? 'bg-slate-800 text-emerald-400 font-medium' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}><Layout size={18} /> 總覽儀表板</button>
-          {projects.map(proj => (
-            <div key={proj.id} className="group relative flex items-center">
-              <button onClick={() => { setSelectedProject(proj); setView('project'); setSelectedSubChapter('concept'); }} className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left truncate ${selectedProject?.id === proj.id ? 'bg-slate-800 text-emerald-400 font-medium' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}><Folder size={18} /> <span className="truncate">{proj.name}</span></button>
-              <button onClick={(e) => onDeleteProject(proj.id, e)} className="absolute right-2 p-1.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
-            </div>
-          ))}
-        </div>
-      </div>
-      {showNewProjectModal && (
-        <div className="absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-2xl">
-            <h3 className="text-white font-bold mb-3">建立新專案</h3>
-            <form onSubmit={handleSubmit}>
-              <input 
-                ref={inputRef}
-                autoFocus 
-                type="text" 
-                placeholder="專案名稱" 
-                className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white mb-3 focus:ring-2 focus:ring-emerald-500 outline-none" 
-              />
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowNewProjectModal(false)} className="px-3 py-1.5 text-slate-400 text-sm hover:text-white">取消</button>
-                <button type="submit" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium">建立</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">No Storage Required</div>
-    </div>
-  );
-};
-
-const Dashboard = ({ projects, posts, setShowNewProjectModal, setSelectedProject, setSelectedSubChapter, setView }) => (
-  <div className="p-8 max-w-5xl mx-auto">
-    <h2 className="text-3xl font-bold text-slate-800 mb-6">開發者知識庫</h2>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg">
-        <div className="opacity-80 mb-2">總專案數</div>
-        <div className="text-4xl font-bold">{projects.length}</div>
-      </div>
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-        <div className="text-slate-500 mb-2">累積文章</div>
-        <div className="text-4xl font-bold text-slate-800">{posts.length}</div>
-      </div>
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center">
-        <p className="text-slate-500 mb-3">使用內建圖片壓縮技術</p>
-        <button onClick={() => setShowNewProjectModal(true)} className="text-emerald-600 font-medium hover:underline">+ 建立一個新專案</button>
-      </div>
-    </div>
-    <h3 className="text-xl font-bold text-slate-800 mb-4">最近更新</h3>
-    <div className="space-y-3">
-      {posts.slice(0, 5).map(post => {
-        const proj = projects.find(p => p.id === post.projectId);
-        return (
-          <div key={post.id} onClick={() => { setSelectedProject(proj); setSelectedSubChapter(post.subChapter); setView('project'); }} className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 hover:shadow-md transition-all cursor-pointer">
-            <div className={`w-2 h-12 rounded-full ${post.subChapter === 'concept' ? 'bg-blue-400' : post.subChapter === 'implementation' ? 'bg-amber-400' : 'bg-purple-400'}`}></div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{proj?.name || '未知'}</span>
-                <span className="text-xs text-slate-400">{post.date}</span>
-              </div>
-              <h4 className="font-bold text-slate-800">{post.title}</h4>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  </div>
-);
-
-const SubChapterTabs = ({ selectedSubChapter, setSelectedSubChapter }) => (
-  <div className="flex border-b border-slate-200 bg-white px-6 sticky top-0 z-10">
-    {SUB_CHAPTERS.map(sub => {
-      const Icon = sub.icon;
-      return (
-        <button key={sub.id} onClick={() => setSelectedSubChapter(sub.id)} className={`flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${selectedSubChapter === sub.id ? 'border-emerald-500 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}>
-          <Icon size={18} /> {sub.name}
-        </button>
-      );
-    })}
-  </div>
-);
-
-const ProjectView = ({ 
-  selectedProject, selectedSubChapter, setSelectedSubChapter, 
-  posts, setFormData, setView, setSelectedPost 
-}) => {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="bg-white border-b border-slate-200 px-8 py-6">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">{selectedProject.name}</h1>
-            <p className="text-slate-500 text-sm">在這個專案中紀錄所有的開發細節</p>
-          </div>
-          <button onClick={() => { setFormData({ title: '', subChapter: selectedSubChapter, content: '', image: null }); setView('create_post'); }} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg shadow-lg shadow-emerald-200 transition-all font-medium"><Plus size={18} /> 新增{SUB_CHAPTERS.find(s => s.id === selectedSubChapter)?.name}</button>
-        </div>
-      </div>
-      <SubChapterTabs selectedSubChapter={selectedSubChapter} setSelectedSubChapter={setSelectedSubChapter} />
-      <div className="flex-1 overflow-auto p-8 bg-slate-50">
-        {posts.length === 0 ? (
-          <div className="text-center py-20 opacity-60">
-            <Layers size={48} className="mx-auto mb-4 text-slate-300" />
-            <p className="text-slate-500">這個章節還沒有任何內容</p>
-          </div>
-        ) : (
-          <div className="grid gap-4 max-w-4xl mx-auto">
-            {posts.map(post => (
-              <div key={post.id} onClick={() => { setSelectedPost(post); setView('post_detail'); }} className="group bg-white p-5 rounded-xl border border-slate-200 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer flex gap-4">
-                {post.image && (
-                   <div className="w-24 h-24 flex-shrink-0 bg-slate-100 rounded-lg overflow-hidden border border-slate-100">
-                     <img src={post.image} alt="" className="w-full h-full object-cover" />
-                   </div>
-                )}
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-slate-800 mb-2 group-hover:text-emerald-600 transition-colors">{post.title}</h3>
-                  <p className="text-slate-500 text-sm line-clamp-2">{post.content}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const Editor = ({ 
-  view, formData, setFormData, handleSavePost, 
-  handleImageChange, isLoading, setView 
-}) => {
-  return (
-    <div className="max-w-3xl mx-auto m-8 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-      <div className="border-b border-slate-100 p-4 flex justify-between items-center bg-slate-50">
-        <h2 className="text-lg font-bold text-slate-800">
-          {view === 'create_post' ? `新增：${SUB_CHAPTERS.find(s => s.id === formData.subChapter)?.name}` : '編輯文章'}
-        </h2>
-        <button onClick={() => setView('project')} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
-      </div>
-      
-      <form onSubmit={handleSavePost} className="p-6 space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">標題</label>
-          <input 
-            required 
-            className="w-full bg-white text-slate-900 px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none" 
-            value={formData.title} 
-            onChange={e => setFormData({...formData, title: e.target.value})} 
-            placeholder="請輸入文章標題..." 
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">所屬章節</label>
-            <select 
-              className="w-full bg-white text-slate-900 px-4 py-2 rounded-lg border border-slate-300" 
-              value={formData.subChapter} 
-              onChange={e => setFormData({...formData, subChapter: e.target.value})}
-            >
-              {SUB_CHAPTERS.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">圖片 (自動壓縮)</label>
-            <label className="flex items-center gap-2 w-full px-4 py-2 rounded-lg border border-slate-300 hover:border-emerald-500 cursor-pointer bg-white text-sm text-slate-500 hover:text-emerald-600 transition-colors">
-              <Upload size={16} />
-              {formData.image ? '更換圖片' : '選擇圖片'}
-              <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-            </label>
-          </div>
-        </div>
-
-        {formData.image && (
-          <div className="relative h-48 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 group">
-            <img src={formData.image} alt="Pre" className="w-full h-full object-contain" />
-            <button type="button" onClick={() => setFormData({...formData, image: null})} className="absolute top-2 right-2 bg-red-500/80 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14}/></button>
-          </div>
-        )}
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">內容</label>
-          <textarea 
-            required 
-            rows="12" 
-            className="w-full bg-white text-slate-900 px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none font-mono text-sm" 
-            value={formData.content} 
-            onChange={e => setFormData({...formData, content: e.target.value})} 
-            placeholder="支援純文字..." 
-          />
-        </div>
-
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-          <button type="button" onClick={() => setView('project')} className="px-5 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100">取消</button>
-          <button type="submit" disabled={isLoading} className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/30 flex items-center gap-2 disabled:opacity-50">
-            {isLoading ? '處理中...' : <><Save size={18} /> 儲存</>}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-};
-
-const PostDetail = ({ selectedProject, selectedPost, setView, prepareEdit, handleDeletePost }) => {
-  return (
-    <div className="max-w-4xl mx-auto p-8">
-      <button onClick={() => setView('project')} className="mb-6 flex items-center gap-2 text-slate-500 hover:text-emerald-600 font-medium">
-        <ChevronRight className="rotate-180" size={18} /> 回到 {selectedProject?.name}
+    <>
+      <button 
+        onClick={() => setIsMobileOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-slate-800 text-white rounded-lg shadow-lg"
+      >
+        <Menu size={20} />
       </button>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        {selectedPost.image && (
-          <div className="w-full h-80 bg-slate-100">
-            <img src={selectedPost.image} alt={selectedPost.title} className="w-full h-full object-contain bg-slate-900" />
-          </div>
-        )}
-        <div className="p-8">
-          <div className="flex items-center gap-3 mb-4">
-            <span className={`text-xs font-bold px-3 py-1 rounded-full ${selectedPost.subChapter === 'concept' ? 'bg-blue-100 text-blue-700' : selectedPost.subChapter === 'implementation' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'}`}>
-              {SUB_CHAPTERS.find(s => s.id === selectedPost.subChapter)?.name}
-            </span>
-            <span className="text-slate-400 text-sm">{selectedPost.date}</span>
-          </div>
-          <h1 className="text-4xl font-bold text-slate-900 mb-8">{selectedPost.title}</h1>
-          <div className="prose prose-slate max-w-none text-lg text-slate-700 whitespace-pre-line">
-            {selectedPost.content}
-          </div>
-          <div className="mt-12 pt-6 border-t border-slate-100 flex justify-end gap-3">
-            <button onClick={() => prepareEdit(selectedPost)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-50 border border-slate-200"><Edit3 size={18} /> 編輯</button>
-            <button onClick={() => handleDeletePost(selectedPost.id)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100"><Trash2 size={18} /> 刪除</button>
-          </div>
+      <div className={`
+        fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 text-slate-300 flex flex-col transition-transform duration-300 shadow-2xl
+        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative
+      `}>
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+          <h1 className="font-bold text-white tracking-wider flex items-center gap-2">
+            <Layout className="text-emerald-400" size={20} /> DevLog
+          </h1>
+          <button onClick={() => setIsMobileOpen(false)} className="md:hidden"><X size={20} /></button>
         </div>
+
+        {/* Project List (Tree) */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {projects.map(proj => {
+            const isProjExpanded = expandedProjects[proj.id];
+            // Filter chapters for this project
+            const projectChapters = chapters.filter(c => c.projectId === proj.id);
+
+            return (
+              <div key={proj.id} className="mb-1">
+                {/* Project Item */}
+                <div className="group flex items-center justify-between hover:bg-slate-800 rounded-lg pr-2 transition-colors">
+                  <button 
+                    onClick={() => toggleProject(proj.id)}
+                    className="flex-1 flex items-center gap-2 p-2 text-sm font-medium text-slate-200"
+                  >
+                    {isProjExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    <Folder size={16} className={isProjExpanded ? "text-emerald-400" : "text-slate-500"} />
+                    <span className="truncate">{proj.name}</span>
+                  </button>
+                  <button onClick={(e) => onDeleteProject(proj.id, e)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-1">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                {/* Dynamic Chapters (Sub-level) */}
+                {isProjExpanded && (
+                  <div className="ml-4 border-l border-slate-700 pl-2 mt-1 space-y-1">
+                    {projectChapters.length === 0 && (
+                      <div className="text-xs text-slate-500 p-2 italic">尚無章節，請新增</div>
+                    )}
+                    
+                    {projectChapters.map(chap => {
+                      const isChapExpanded = expandedChapters[chap.id];
+                      const chapterPosts = posts.filter(p => p.subChapter === chap.id); // subChapter now stores chapterId
+                      
+                      return (
+                        <div key={chap.id}>
+                          <div className="flex items-center justify-between group hover:bg-slate-800/50 rounded pr-2">
+                            <button 
+                              onClick={() => toggleChapter(chap.id)}
+                              className="flex-1 flex items-center gap-2 p-1.5 text-xs text-slate-400 hover:text-white"
+                            >
+                              {isChapExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                              {chap.name}
+                              <span className="ml-auto text-[10px] bg-slate-800 px-1.5 rounded-full">{chapterPosts.length}</span>
+                            </button>
+                            
+                            {/* Chapter Actions */}
+                            <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button 
+                                onClick={(e) => handleEditChapterClick(e, chap)}
+                                className="text-slate-500 hover:text-blue-400 p-1 rounded"
+                                title="修改章節名稱"
+                              >
+                                <PenLine size={12} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); onDeleteChapter(chap.id); }}
+                                className="text-slate-500 hover:text-red-400 p-1 rounded"
+                                title="刪除章節"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); onCreatePost(proj.id, chap.id); if(window.innerWidth < 768) setIsMobileOpen(false); }}
+                                className="text-emerald-500 hover:bg-emerald-500/10 p-1 rounded"
+                                title="新增文章"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Posts (Leaf-level) */}
+                          {isChapExpanded && (
+                            <div className="ml-4 border-l border-slate-700/50 pl-2 mt-1 space-y-0.5">
+                              {chapterPosts.length === 0 && (
+                                <div className="text-[10px] text-slate-600 p-1 italic">暫無文章</div>
+                              )}
+                              {chapterPosts.map(post => (
+                                <button
+                                  key={post.id}
+                                  onClick={() => { onSelectPost(post); if(window.innerWidth < 768) setIsMobileOpen(false); }}
+                                  className={`w-full text-left p-1.5 text-xs rounded truncate transition-colors flex items-center gap-2 ${selectedPost?.id === post.id ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}
+                                >
+                                  <FileText size={12} />
+                                  {post.title}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Add Chapter Button */}
+                    <button 
+                      onClick={() => handleAddChapterClick(proj.id)}
+                      className="flex items-center gap-2 text-xs text-emerald-500 hover:text-emerald-400 px-2 py-2 mt-2 w-full hover:bg-slate-800 rounded transition-colors"
+                    >
+                      <Plus size={14} /> 新增章節
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Create Project Footer */}
+        <div className="p-3 border-t border-slate-800 bg-slate-900">
+          <form onSubmit={handleCreateProjectSubmit} className="relative">
+            <input 
+              ref={inputRef}
+              type="text" 
+              placeholder="新增專案..." 
+              className="w-full bg-slate-800 text-slate-200 text-sm rounded-md pl-8 pr-2 py-2 border border-slate-700 focus:border-emerald-500 outline-none"
+            />
+            <FolderPlus size={14} className="absolute left-2.5 top-3 text-slate-500" />
+          </form>
+        </div>
+      </div>
+      
+      {/* Overlay for mobile */}
+      {isMobileOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsMobileOpen(false)} />}
+    </>
+  );
+};
+
+// 2. 區塊編輯器 (Block Editor)
+const BlockEditor = ({ post, chapters, onSave, onDelete }) => {
+  const initialBlocks = post.blocks || [
+    { type: 'text', content: post.content || '' },
+    ...(post.image ? [{ type: 'image', content: post.image }] : [])
+  ];
+
+  const [title, setTitle] = useState(post.title);
+  const [blocks, setBlocks] = useState(initialBlocks);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 當選擇的文章改變時，重置編輯器狀態
+  useEffect(() => {
+    setTitle(post.title);
+    setBlocks(post.blocks || [
+      { type: 'text', content: post.content || '' },
+      ...(post.image ? [{ type: 'image', content: post.image }] : [])
+    ]);
+  }, [post.id]);
+
+  const addBlock = (index, type) => {
+    const newBlock = { type, content: '' };
+    const newBlocks = [...blocks];
+    newBlocks.splice(index + 1, 0, newBlock);
+    setBlocks(newBlocks);
+  };
+
+  const removeBlock = (index) => {
+    if (blocks.length <= 1) return;
+    const newBlocks = blocks.filter((_, i) => i !== index);
+    setBlocks(newBlocks);
+  };
+
+  const updateBlock = (index, content) => {
+    const newBlocks = [...blocks];
+    newBlocks[index].content = content;
+    setBlocks(newBlocks);
+  };
+
+  const moveBlock = (index, direction) => {
+    if ((direction === -1 && index === 0) || (direction === 1 && index === blocks.length - 1)) return;
+    const newBlocks = [...blocks];
+    const temp = newBlocks[index];
+    newBlocks[index] = newBlocks[index + direction];
+    newBlocks[index + direction] = temp;
+    setBlocks(newBlocks);
+  };
+
+  const handleImageUpload = async (index, file) => {
+    if (!file) return;
+    try {
+      const base64 = await compressImage(file);
+      updateBlock(index, base64);
+    } catch (e) {
+      alert("圖片處理失敗");
+    }
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    const firstTextBlock = blocks.find(b => b.type === 'text');
+    const previewContent = firstTextBlock ? firstTextBlock.content.slice(0, 100) : '';
+    const firstImageBlock = blocks.find(b => b.type === 'image');
+    const previewImage = firstImageBlock ? firstImageBlock.content : null;
+
+    const postData = {
+      ...post,
+      title,
+      blocks,
+      content: previewContent,
+      image: previewImage
+    };
+    await onSave(postData);
+    setIsSaving(false);
+  };
+
+  // 取得章節名稱 (用於 Header 顯示)
+  const currentChapterName = chapters.find(c => c.id === post.subChapter)?.name || "未知章節";
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 md:p-10 pb-32">
+      {/* 頂部工具列 */}
+      <div className="flex justify-between items-center mb-6 sticky top-0 bg-white/90 backdrop-blur z-20 py-4 border-b border-slate-100">
+        <div className="text-sm text-slate-500 flex items-center gap-2">
+          <FolderOpen size={16} className="text-slate-400" />
+          <span className="bg-slate-100 px-2 py-1 rounded font-medium text-slate-600">
+             {currentChapterName}
+          </span>
+          <span className="text-slate-300">|</span>
+          <span>{post.date}</span>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => onDelete(post.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><Trash2 size={18} /></button>
+          <button 
+            onClick={handleSave} 
+            disabled={isSaving}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
+          >
+            <Save size={18} /> {isSaving ? '儲存中...' : '儲存變更'}
+          </button>
+        </div>
+      </div>
+
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        className="w-full text-3xl md:text-4xl font-bold text-slate-900 border-none outline-none placeholder:text-slate-300 bg-transparent mb-8"
+        placeholder="請輸入文章標題..."
+      />
+
+      <div className="space-y-4">
+        {blocks.map((block, index) => (
+          <div key={index} className="group relative pl-0 md:pl-8 transition-all">
+            <div className="absolute left-0 top-2 opacity-100 md:opacity-0 group-hover:opacity-100 flex flex-col gap-1 transition-opacity">
+               <button onClick={() => moveBlock(index, -1)} className="p-1 text-slate-300 hover:text-slate-600"><MoveUp size={14} /></button>
+               <button onClick={() => moveBlock(index, 1)} className="p-1 text-slate-300 hover:text-slate-600"><MoveDown size={14} /></button>
+               <button onClick={() => removeBlock(index)} className="p-1 text-slate-300 hover:text-red-500"><X size={14} /></button>
+            </div>
+
+            <div className="min-h-[60px] relative">
+              {block.type === 'text' ? (
+                <textarea
+                  value={block.content}
+                  onChange={(e) => updateBlock(index, e.target.value)}
+                  placeholder="輸入文字內容..."
+                  className="w-full min-h-[100px] resize-y bg-transparent border-none outline-none text-lg text-slate-700 leading-relaxed focus:bg-slate-50/50 rounded p-2"
+                  style={{ height: 'auto' }}
+                  onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                />
+              ) : (
+                <div className="relative group/img bg-slate-50 border border-slate-200 rounded-lg p-2 flex justify-center items-center min-h-[200px]">
+                  {block.content ? (
+                    <>
+                      <img src={block.content} alt="Content" className="max-w-full max-h-[500px] object-contain rounded" />
+                      <label className="absolute inset-0 bg-black/50 flex items-center justify-center text-white opacity-0 group-hover/img:opacity-100 cursor-pointer transition-opacity rounded-lg">
+                        更換圖片
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(index, e.target.files[0])} />
+                      </label>
+                    </>
+                  ) : (
+                     <label className="flex flex-col items-center gap-2 cursor-pointer text-slate-400 hover:text-emerald-500 py-10">
+                       <ImageIcon size={32} />
+                       <span>點擊上傳圖片</span>
+                       <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(index, e.target.files[0])} />
+                     </label>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="h-4 group-hover:h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all z-10">
+               <div className="flex gap-2 bg-slate-800 text-white rounded-full px-3 py-1 scale-75 group-hover:scale-100 shadow-lg">
+                 <button onClick={() => addBlock(index, 'text')} className="flex items-center gap-1 hover:text-emerald-400"><Type size={14} /> 文字</button>
+                 <div className="w-px bg-slate-600"></div>
+                 <button onClick={() => addBlock(index, 'image')} className="flex items-center gap-1 hover:text-emerald-400"><ImageIcon size={14} /> 圖片</button>
+               </div>
+            </div>
+          </div>
+        ))}
+        
+        {blocks.length === 0 && (
+           <div className="flex gap-4 justify-center py-10">
+              <button onClick={() => addBlock(-1, 'text')} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">
+                 <Type size={18} /> 新增文字
+              </button>
+              <button onClick={() => addBlock(-1, 'image')} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">
+                 <ImageIcon size={18} /> 新增圖片
+              </button>
+           </div>
+        )}
       </div>
     </div>
   );
 };
 
-// --- Main Component ---
-export default function App() {
-  // --- Global State ---
-  const [projects, setProjects] = useState([]);
-  const [posts, setPosts] = useState([]);
-  
-  // --- UI State ---
-  const [view, setView] = useState('dashboard');
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedSubChapter, setSelectedSubChapter] = useState('concept');
-  const [selectedPost, setSelectedPost] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  
-  // --- Form State ---
-  const [formData, setFormData] = useState({
-    title: '',
-    subChapter: 'concept',
-    content: '',
-    image: null
-  });
+// 3. 空狀態 (Empty State)
+const EmptyState = () => (
+  <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 text-slate-400 p-8">
+    <div className="w-24 h-24 bg-slate-200 rounded-full flex items-center justify-center mb-6">
+      <Layout size={48} className="text-slate-400" />
+    </div>
+    <h2 className="text-2xl font-bold text-slate-700 mb-2">開始寫作</h2>
+    <p className="max-w-md text-center mb-8">選擇左側專案，新增一個章節與文章。</p>
+  </div>
+);
 
-  // --- Data Fetching ---
+// --- Main App Component ---
+export default function App() {
+  const [projects, setProjects] = useState([]);
+  const [chapters, setChapters] = useState([]); // 新增：章節狀態
+  const [posts, setPosts] = useState([]);
+  const [selectedPost, setSelectedPost] = useState(null);
+
+  // Data Fetching
   useEffect(() => {
     if (!db) return;
 
+    // 1. Fetch Projects
     const qProjects = query(collection(db, "projects"), orderBy("createdAt", "desc"));
     const unsubProjects = onSnapshot(qProjects, (snapshot) => {
       setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // 2. Fetch Chapters (Dynamic)
+    const qChapters = query(collection(db, "chapters"), orderBy("createdAt", "asc"));
+    const unsubChapters = onSnapshot(qChapters, (snapshot) => {
+      setChapters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 3. Fetch Posts
     const qPosts = query(collection(db, "posts"), orderBy("date", "desc"));
     const unsubPosts = onSnapshot(qPosts, (snapshot) => {
       setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => { unsubProjects(); unsubPosts(); };
+    return () => { unsubProjects(); unsubChapters(); unsubPosts(); };
   }, []);
 
-  const currentProjectPosts = posts.filter(p => 
-    selectedProject && p.projectId === selectedProject.id && p.subChapter === selectedSubChapter
-  );
-
-  // --- Handlers ---
-  const handleCreateProject = async (projectName) => {
-    if (!projectName || !projectName.trim()) return;
+  // Handlers - Project
+  const handleCreateProject = async (name) => {
     try {
       await addDoc(collection(db, "projects"), {
-        name: projectName,
+        name,
         createdAt: new Date().toISOString()
       });
-      setShowNewProjectModal(false);
-    } catch (error) {
-      alert("新增失敗: " + error.message);
-    }
+    } catch (e) { alert("建立專案失敗"); }
   };
 
-  const handleDeleteProject = async (projectId, e) => {
+  const handleDeleteProject = async (id, e) => {
     e.stopPropagation();
-    if (window.confirm('確定刪除專案？(注意：相關文章不會自動刪除)')) {
-      await deleteDoc(doc(db, "projects", projectId));
-      if (selectedProject?.id === projectId) {
-        setSelectedProject(null);
-        setView('dashboard');
-      }
+    if (window.confirm("確定刪除此專案？(其下章節與文章需手動清理)")) {
+      await deleteDoc(doc(db, "projects", id));
+      if (selectedPost?.projectId === id) setSelectedPost(null);
     }
   };
 
-  const handleSavePost = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
+  // Handlers - Chapter (New)
+  const handleCreateChapter = async (projectId, name) => {
     try {
-      const postPayload = {
-        title: formData.title,
-        subChapter: formData.subChapter,
-        content: formData.content,
-        image: formData.image,
-        projectId: selectedProject.id,
-        date: new Date().toISOString().split('T')[0]
-      };
+      await addDoc(collection(db, "chapters"), {
+        projectId,
+        name,
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) { alert("建立章節失敗"); }
+  };
 
-      if (view === 'create_post') {
-        await addDoc(collection(db, "posts"), postPayload);
-      } else if (view === 'edit_post') {
-        await updateDoc(doc(db, "posts", formData.id), postPayload);
-      }
+  const handleEditChapter = async (chapterId, newName) => {
+    try {
+      await updateDoc(doc(db, "chapters", chapterId), { name: newName });
+    } catch (e) { alert("修改章節失敗"); }
+  };
 
-      setView('project');
-      setFormData({ title: '', subChapter: 'concept', content: '', image: null });
-    } catch (error) {
-      console.error(error);
-      if (error.code === 'invalid-argument') {
-        alert("儲存失敗：圖片可能太大了，請嘗試更小的圖片");
+  const handleDeleteChapter = async (chapterId) => {
+    if (window.confirm("確定刪除此章節？(其下文章不會刪除，但會隱藏)")) {
+      await deleteDoc(doc(db, "chapters", chapterId));
+    }
+  };
+
+  // Handlers - Post
+  const handleCreatePost = (projectId, chapterId) => {
+    const newPost = {
+      id: 'temp-' + Date.now(),
+      title: '未命名文章',
+      projectId,
+      subChapter: chapterId, // 這裡現在存的是 chapterId
+      date: new Date().toISOString().split('T')[0],
+      blocks: [{ type: 'text', content: '' }],
+      isNew: true
+    };
+    setSelectedPost(newPost);
+  };
+
+  const handleSavePost = async (postData) => {
+    const { isNew, id, ...data } = postData;
+    try {
+      if (isNew || id.startsWith('temp-')) {
+        const docRef = await addDoc(collection(db, "posts"), data);
+        setSelectedPost({ ...data, id: docRef.id });
       } else {
-        alert("儲存失敗，請檢查 Console");
+        await updateDoc(doc(db, "posts", id), data);
+        setSelectedPost(postData);
       }
-    } finally {
-      setIsLoading(false);
+    } catch (e) {
+      console.error(e);
+      alert("儲存失敗");
     }
   };
 
-  const handleDeletePost = async (postId) => {
-    if (window.confirm('確定刪除此文章？')) {
-      await deleteDoc(doc(db, "posts", postId));
-      setView('project');
+  const handleDeletePost = async (id) => {
+    if (id.startsWith('temp-')) {
+      setSelectedPost(null);
+      return;
     }
-  };
-
-  const prepareEdit = (post) => {
-    setFormData({
-      id: post.id,
-      title: post.title,
-      subChapter: post.subChapter,
-      content: post.content,
-      image: post.image
-    });
-    setView('edit_post');
-  };
-
-  const handleImageChange = async (e) => {
-    if (e.target.files[0]) {
-      const file = e.target.files[0];
-      try {
-        const compressedBase64 = await compressImage(file);
-        setFormData({ ...formData, image: compressedBase64 });
-      } catch (err) {
-        console.error("圖片處理失敗", err);
-        alert("圖片處理失敗");
-      }
+    if (window.confirm("確定刪除此文章？")) {
+      await deleteDoc(doc(db, "posts", id));
+      setSelectedPost(null);
     }
   };
 
   if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white p-6 text-center">
-        <AlertCircle size={64} className="text-emerald-400 mb-6" />
-        <h1 className="text-3xl font-bold mb-4">請設定 Firebase</h1>
-        <p className="max-w-md text-slate-400 mb-8">
-          無需升級方案！請將您之前複製的 <code>firebaseConfig</code> 填入程式碼中即可使用。
-        </p>
-      </div>
-    );
+    return <div className="h-screen flex items-center justify-center">請設定 Firebase Config</div>;
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans text-slate-900">
-      {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-20 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />}
-      
-      <Sidebar 
-        isSidebarOpen={isSidebarOpen} 
-        setIsSidebarOpen={setIsSidebarOpen}
-        showNewProjectModal={showNewProjectModal}
-        setShowNewProjectModal={setShowNewProjectModal}
-        projects={projects}
-        selectedProject={selectedProject}
-        setSelectedProject={setSelectedProject}
-        setView={setView}
-        setSelectedSubChapter={setSelectedSubChapter}
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      <TreeSidebar 
+        projects={projects} 
+        chapters={chapters}
+        posts={posts}
+        selectedPost={selectedPost}
+        onSelectPost={setSelectedPost}
         onCreateProject={handleCreateProject}
         onDeleteProject={handleDeleteProject}
+        onCreateChapter={handleCreateChapter}
+        onEditChapter={handleEditChapter}
+        onDeleteChapter={handleDeleteChapter}
+        onCreatePost={handleCreatePost}
       />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="md:hidden bg-white border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-10">
-          <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600"><Menu size={24} /></button>
-          <span className="font-bold text-lg text-slate-800">DevLog 輕量版</span>
-          <div className="w-6" />
-        </header>
-        <main className="flex-1 overflow-auto scroll-smooth">
-          {view === 'dashboard' && (
-            <Dashboard 
-              projects={projects} 
-              posts={posts} 
-              setShowNewProjectModal={setShowNewProjectModal}
-              setSelectedProject={setSelectedProject}
-              setSelectedSubChapter={setSelectedSubChapter}
-              setView={setView}
-            />
-          )}
-          {view === 'project' && selectedProject && (
-            <ProjectView 
-              selectedProject={selectedProject}
-              selectedSubChapter={selectedSubChapter}
-              setSelectedSubChapter={setSelectedSubChapter}
-              posts={currentProjectPosts}
-              setFormData={setFormData}
-              setView={setView}
-              setSelectedPost={setSelectedPost}
-            />
-          )}
-          {(view === 'create_post' || view === 'edit_post') && (
-            <Editor 
-              view={view}
-              formData={formData}
-              setFormData={setFormData}
-              handleSavePost={handleSavePost}
-              handleImageChange={handleImageChange}
-              isLoading={isLoading}
-              setView={setView}
-            />
-          )}
-          {view === 'post_detail' && selectedPost && (
-            <PostDetail 
-              selectedProject={selectedProject}
-              selectedPost={selectedPost}
-              setView={setView}
-              prepareEdit={prepareEdit}
-              handleDeletePost={handleDeletePost}
-            />
-          )}
-        </main>
-      </div>
+      <main className="flex-1 h-full overflow-y-auto bg-white relative">
+        {selectedPost ? (
+          <BlockEditor 
+            post={selectedPost} 
+            chapters={chapters}
+            onSave={handleSavePost}
+            onDelete={handleDeletePost}
+          />
+        ) : (
+          <EmptyState />
+        )}
+      </main>
     </div>
   );
 }
