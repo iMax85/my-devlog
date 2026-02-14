@@ -123,7 +123,7 @@ const TreeSidebar = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
           <h1 className="font-bold text-white tracking-wider flex items-center gap-2">
-            <Layout className="text-emerald-400" size={20} /> 佳美資訊
+            <Layout className="text-emerald-400" size={20} /> DevLog
           </h1>
           <button onClick={() => setIsMobileOpen(false)} className="md:hidden"><X size={20} /></button>
         </div>
@@ -257,7 +257,7 @@ const TreeSidebar = ({
   );
 };
 
-// 2. 區塊編輯器 (Block Editor) - 寬度修正版
+// 2. 區塊編輯器 (Block Editor) - 全寬度修正版
 const BlockEditor = ({ post, chapters, onSave, onDelete }) => {
   const initialBlocks = post.blocks || [
     { type: 'text', content: post.content || '' },
@@ -337,8 +337,8 @@ const BlockEditor = ({ post, chapters, onSave, onDelete }) => {
   const currentChapterName = chapters.find(c => c.id === post.subChapter)?.name || "未知章節";
 
   return (
-    // [Mod] 將 max-w-4xl 改為 max-w-[1600px]，讓編輯區寬度翻倍
-    <div className="max-w-[1600px] mx-auto p-6 md:p-10 pb-32">
+    // [Mod] 移除所有最大寬度限制 (max-w)，使用 w-full 佔滿剩餘空間
+    <div className="w-full h-full p-6 md:p-10 pb-32">
       {/* 頂部工具列 */}
       <div className="flex justify-between items-center mb-6 sticky top-0 bg-white/90 backdrop-blur z-20 py-4 border-b border-slate-100">
         <div className="text-sm text-slate-500 flex items-center gap-2">
