@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   BookOpen, Plus, Trash2, Edit3, Save, X, 
   Search, Menu, ChevronRight, ChevronDown, Layout, Upload, 
   FolderPlus, Folder, FileText, HelpCircle, AlertCircle, 
   Image as ImageIcon, MoreVertical, Type, MoveUp, MoveDown,
   FolderOpen, PenLine, PanelLeftClose, PanelLeftOpen, 
-  Maximize2, Minimize2, MoreHorizontal
+  Maximize2, Minimize2, MoreHorizontal, Bold, Italic, Underline, 
+  Heading1, Heading2, Heading3, Highlighter
 } from 'lucide-react';
 
 // --- Firebase SDK Imports ---
@@ -35,7 +36,7 @@ try {
 }
 
 // --- Helpers ---
-const compressImage = (file) => {
+const compressImage = (file, maxWidth = 1200) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -44,15 +45,14 @@ const compressImage = (file) => {
       img.src = event.target.result;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200; // 提升一點圖片寬度以適應全寬模式
-        const scaleSize = MAX_WIDTH / img.width;
+        const scaleSize = maxWidth / img.width;
         
         if (scaleSize >= 1) {
           resolve(event.target.result);
           return;
         }
 
-        canvas.width = MAX_WIDTH;
+        canvas.width = maxWidth;
         canvas.height = img.height * scaleSize;
 
         const ctx = canvas.getContext('2d');
@@ -67,7 +67,63 @@ const compressImage = (file) => {
 
 // --- Components ---
 
-// 1. 樹狀側邊欄 (Notion Style)
+// 1. 浮動文字工具列 (Floating Toolbar)
+const FloatingToolbar = ({ position, onFormat }) => {
+  if (!position) return null;
+
+  return (
+    <div 
+      className="fixed z-50 flex items-center gap-1 p-1 bg-slate-800 text-slate-200 rounded-lg shadow-xl animate-in fade-in zoom-in-95 duration-150"
+      style={{ top: position.top - 50, left: position.left }}
+      onMouseDown={(e) => e.preventDefault()} // 防止失去焦點
+    >
+      <button onClick={() => onFormat('bold')} className="p-1.5 hover:bg-slate-700 rounded"><Bold size={16} /></button>
+      <button onClick={() => onFormat('italic')} className="p-1.5 hover:bg-slate-700 rounded"><Italic size={16} /></button>
+      <button onClick={() => onFormat('underline')} className="p-1.5 hover:bg-slate-700 rounded"><Underline size={16} /></button>
+      <div className="w-px h-4 bg-slate-600 mx-1"></div>
+      <button onClick={() => onFormat('formatBlock', 'H1')} className="p-1.5 hover:bg-slate-700 rounded"><Heading1 size={16} /></button>
+      <button onClick={() => onFormat('formatBlock', 'H2')} className="p-1.5 hover:bg-slate-700 rounded"><Heading2 size={16} /></button>
+      <button onClick={() => onFormat('formatBlock', 'P')} className="p-1.5 hover:bg-slate-700 rounded text-xs font-bold w-7">Normal</button>
+    </div>
+  );
+};
+
+// 2. 內容區塊元件 (Content Block - Replace Textarea)
+// 使用 contentEditable 讓 div 變成可編輯，支援 Rich Text
+const ContentBlock = ({ html, tagName, className, onInput, onFocus, placeholder }) => {
+  const contentEditableRef = useRef(null);
+
+  // 避免 Cursor 跳動：只有當內容真的變更且非當前編輯狀態時才更新 innerHTML
+  useEffect(() => {
+    if (contentEditableRef.current && contentEditableRef.current.innerHTML !== html) {
+      // 只有在初始化或外部更新時才設值，避免打字時重繪導致光標跳到最前面
+      if (document.activeElement !== contentEditableRef.current) {
+        contentEditableRef.current.innerHTML = html;
+      }
+    }
+  }, [html]);
+
+  const handleInput = (e) => {
+    onInput(e.currentTarget.innerHTML);
+  };
+
+  const Tag = tagName || 'div';
+
+  return (
+    <Tag
+      ref={contentEditableRef}
+      className={`outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 dark:empty:before:text-slate-600 cursor-text ${className}`}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={handleInput}
+      onFocus={onFocus}
+      onBlur={handleInput} // 確保最後狀態同步
+      data-placeholder={placeholder}
+    />
+  );
+};
+
+// 3. 樹狀側邊欄 (Updated with Dark Mode)
 const TreeSidebar = ({ 
   projects, chapters, posts, selectedPost, onSelectPost, 
   onCreateProject, onDeleteProject, 
@@ -105,19 +161,19 @@ const TreeSidebar = ({
 
   return (
     <>
-      {/* Sidebar Container */}
       <div className={`
-        fixed inset-y-0 left-0 z-40 flex flex-col bg-slate-50 border-r border-slate-200 transition-all duration-300 ease-in-out
+        fixed inset-y-0 left-0 z-40 flex flex-col 
+        bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 
+        transition-all duration-300 ease-in-out text-slate-700 dark:text-slate-300
         ${isSidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full opacity-0 md:opacity-100 md:w-0 md:translate-x-0'}
         overflow-hidden
       `}>
         {/* Header */}
-        <div className="h-12 px-4 flex items-center justify-between border-b border-slate-200/50 shrink-0">
-          <div className="flex items-center gap-2 font-bold text-slate-700">
-            <div className="w-5 h-5 bg-slate-800 text-white rounded flex items-center justify-center text-xs">D</div>
+        <div className="h-12 px-4 flex items-center justify-between border-b border-slate-200/50 dark:border-slate-800/50 shrink-0">
+          <div className="flex items-center gap-2 font-bold dark:text-white">
+            <div className="w-5 h-5 bg-slate-800 dark:bg-slate-700 text-white rounded flex items-center justify-center text-xs">D</div>
             <span>佳美資訊</span>
           </div>
-          {/* Mobile Close Button */}
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400"><X size={18} /></button>
         </div>
 
@@ -129,19 +185,17 @@ const TreeSidebar = ({
 
             return (
               <div key={proj.id}>
-                {/* Project Item */}
-                <div className="group flex items-center justify-between hover:bg-slate-200/60 rounded px-2 py-1 transition-colors cursor-pointer select-none" onClick={() => toggleProject(proj.id)}>
-                  <div className="flex-1 flex items-center gap-2 text-sm font-medium text-slate-600 truncate">
+                <div className="group flex items-center justify-between hover:bg-slate-200/60 dark:hover:bg-slate-800/60 rounded px-2 py-1 transition-colors cursor-pointer select-none" onClick={() => toggleProject(proj.id)}>
+                  <div className="flex-1 flex items-center gap-2 text-sm font-medium truncate">
                     <span className="text-slate-400">{isProjExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
-                    <Folder size={15} className={isProjExpanded ? "text-slate-800" : "text-slate-400"} />
+                    <Folder size={15} className={isProjExpanded ? "text-slate-800 dark:text-slate-200" : "text-slate-400"} />
                     <span className="truncate">{proj.name}</span>
                   </div>
                   <button onClick={(e) => onDeleteProject(proj.id, e)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-0.5"><Trash2 size={12} /></button>
                 </div>
 
-                {/* Chapters */}
                 {isProjExpanded && (
-                  <div className="ml-2 pl-2 border-l border-slate-200 mt-0.5 space-y-0.5">
+                  <div className="ml-2 pl-2 border-l border-slate-200 dark:border-slate-700 mt-0.5 space-y-0.5">
                     {projectChapters.length === 0 && <div className="text-xs text-slate-400 pl-4 py-1 italic">無章節</div>}
                     
                     {projectChapters.map(chap => {
@@ -150,9 +204,9 @@ const TreeSidebar = ({
                       
                       return (
                         <div key={chap.id}>
-                          <div className="group flex items-center justify-between hover:bg-slate-200/60 rounded px-2 py-1 cursor-pointer select-none" onClick={() => toggleChapter(chap.id)}>
-                            <div className="flex-1 flex items-center gap-2 text-xs text-slate-500">
-                              <span className="text-slate-300">{isChapExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+                          <div className="group flex items-center justify-between hover:bg-slate-200/60 dark:hover:bg-slate-800/60 rounded px-2 py-1 cursor-pointer select-none" onClick={() => toggleChapter(chap.id)}>
+                            <div className="flex-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                              <span className="text-slate-300 dark:text-slate-600">{isChapExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
                               <span className="truncate">{chap.name}</span>
                             </div>
                             
@@ -163,17 +217,19 @@ const TreeSidebar = ({
                             </div>
                           </div>
 
-                          {/* Posts */}
                           {isChapExpanded && (
-                            <div className="ml-2 pl-2 border-l border-slate-200 mt-0.5 space-y-0.5">
+                            <div className="ml-2 pl-2 border-l border-slate-200 dark:border-slate-700 mt-0.5 space-y-0.5">
                               {chapterPosts.length === 0 && <div className="text-[10px] text-slate-400 pl-4 py-1">無文章</div>}
                               {chapterPosts.map(post => (
                                 <button
                                   key={post.id}
                                   onClick={() => { onSelectPost(post); if(window.innerWidth < 768) setIsSidebarOpen(false); }}
-                                  className={`w-full text-left pl-4 pr-2 py-1 text-xs rounded truncate transition-colors flex items-center gap-2 ${selectedPost?.id === post.id ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-500 hover:bg-slate-100'}`}
+                                  className={`w-full text-left pl-4 pr-2 py-1 text-xs rounded truncate transition-colors flex items-center gap-2 
+                                    ${selectedPost?.id === post.id 
+                                      ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-medium' 
+                                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                                 >
-                                  <FileText size={12} className={selectedPost?.id === post.id ? "text-emerald-500" : "text-slate-300"} />
+                                  <FileText size={12} className={selectedPost?.id === post.id ? "text-emerald-500" : "text-slate-300 dark:text-slate-600"} />
                                   <span className="truncate">{post.title || "未命名"}</span>
                                 </button>
                               ))}
@@ -183,7 +239,7 @@ const TreeSidebar = ({
                       );
                     })}
 
-                    <button onClick={() => handleAddChapterClick(proj.id)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 pl-4 py-1 mt-1 w-full hover:bg-slate-100 rounded transition-colors">
+                    <button onClick={() => handleAddChapterClick(proj.id)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 pl-4 py-1 mt-1 w-full hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors">
                       <Plus size={12} /> 新增章節
                     </button>
                   </div>
@@ -194,13 +250,13 @@ const TreeSidebar = ({
         </div>
 
         {/* Footer Input */}
-        <div className="p-3 border-t border-slate-200 bg-slate-50 shrink-0">
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 shrink-0">
           <form onSubmit={handleCreateProjectSubmit} className="relative">
             <input 
               ref={inputRef}
               type="text" 
               placeholder="新增專案..." 
-              className="w-full bg-white text-slate-700 text-xs rounded border border-slate-200 pl-7 pr-2 py-1.5 focus:border-slate-400 focus:outline-none shadow-sm placeholder:text-slate-300"
+              className="w-full bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs rounded border border-slate-200 dark:border-slate-700 pl-7 pr-2 py-1.5 focus:border-slate-400 dark:focus:border-slate-500 focus:outline-none shadow-sm placeholder:text-slate-300 dark:placeholder:text-slate-600"
             />
             <FolderPlus size={12} className="absolute left-2.5 top-2 text-slate-400" />
           </form>
@@ -215,25 +271,54 @@ const TreeSidebar = ({
   );
 };
 
-// 2. 區塊編輯器 (Fluid Layout + Toggle Width)
+// 4. 區塊編輯器 (Enhanced: Dark Mode, Rich Text, Cover Image)
 const BlockEditor = ({ post, chapters, onSave, onDelete, isSidebarOpen, setIsSidebarOpen }) => {
   const initialBlocks = post.blocks || [
     { type: 'text', content: post.content || '' },
-    ...(post.image ? [{ type: 'image', content: post.image }] : [])
+    ...(post.image && !post.blocks ? [{ type: 'image', content: post.image }] : [])
   ];
 
   const [title, setTitle] = useState(post.title);
   const [blocks, setBlocks] = useState(initialBlocks);
+  const [coverImage, setCoverImage] = useState(post.coverImage || null); // [New] Cover Image State
   const [isSaving, setIsSaving] = useState(false);
-  const [isFullWidth, setIsFullWidth] = useState(false); // [Feature] 寬度切換狀態
+  const [isFullWidth, setIsFullWidth] = useState(false);
+  
+  // Toolbar State
+  const [toolbarPosition, setToolbarPosition] = useState(null);
 
   useEffect(() => {
     setTitle(post.title);
     setBlocks(post.blocks || [
       { type: 'text', content: post.content || '' },
-      ...(post.image ? [{ type: 'image', content: post.image }] : [])
+      ...(post.image && !post.blocks ? [{ type: 'image', content: post.image }] : [])
     ]);
+    setCoverImage(post.coverImage || null);
   }, [post.id]);
+
+  // Handle Text Selection for Toolbar
+  const handleMouseUp = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      setToolbarPosition(null);
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    
+    // Only show if selection is within the editor
+    setToolbarPosition({
+      top: rect.top,
+      left: rect.left + rect.width / 2 - 100 // Center align roughly
+    });
+  };
+
+  const handleFormat = (command, value = null) => {
+    document.execCommand(command, false, value);
+    // document.execCommand works on contentEditable, but allows us to keep 'single file' structure easily
+    // without heavy libraries like Slate.js.
+  };
 
   const addBlock = (index, type) => {
     const newBlocks = [...blocks];
@@ -269,14 +354,29 @@ const BlockEditor = ({ post, chapters, onSave, onDelete, isSidebarOpen, setIsSid
     } catch (e) { alert("圖片處理失敗"); }
   };
 
+  const handleCoverImageUpload = async (file) => {
+    if (!file) return;
+    try {
+      const base64 = await compressImage(file, 1600); // Higher res for cover
+      setCoverImage(base64);
+    } catch (e) { alert("封面圖片處理失敗"); }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
+    // Clean up content for preview (remove html tags)
     const firstTextBlock = blocks.find(b => b.type === 'text');
-    const previewContent = firstTextBlock ? firstTextBlock.content.slice(0, 100) : '';
+    const rawText = firstTextBlock ? firstTextBlock.content.replace(/<[^>]*>?/gm, '') : '';
+    const previewContent = rawText.slice(0, 100);
     const firstImageBlock = blocks.find(b => b.type === 'image');
     
     await onSave({
-      ...post, title, blocks, content: previewContent, image: firstImageBlock ? firstImageBlock.content : null
+      ...post, 
+      title, 
+      blocks, 
+      coverImage, // Save cover image
+      content: previewContent, 
+      image: firstImageBlock ? firstImageBlock.content : null
     });
     setIsSaving(false);
   };
@@ -284,74 +384,94 @@ const BlockEditor = ({ post, chapters, onSave, onDelete, isSidebarOpen, setIsSid
   const currentChapterName = chapters.find(c => c.id === post.subChapter)?.name || "未知章節";
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Top Navigation Bar (App Chrome) */}
-      <div className="h-12 px-3 flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-md z-20 shrink-0">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors" onMouseUp={handleMouseUp} onKeyUp={handleMouseUp}>
+      <FloatingToolbar position={toolbarPosition} onFormat={handleFormat} />
+
+      {/* Top Navigation Bar */}
+      <div className="h-12 px-3 flex items-center justify-between sticky top-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-20 shrink-0 border-b border-transparent dark:border-slate-800">
         <div className="flex items-center gap-2 overflow-hidden">
-          {/* Sidebar Toggle Button */}
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
-            className="p-1 hover:bg-slate-100 rounded text-slate-500 transition-colors"
-            title={isSidebarOpen ? "收合側邊欄" : "展開側邊欄"}
+            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 dark:text-slate-400 transition-colors"
           >
             {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
           
-          {/* Breadcrumbs */}
-          <div className="hidden md:flex items-center text-sm text-slate-500 gap-2 truncate">
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-100 cursor-default">
+          <div className="hidden md:flex items-center text-sm text-slate-500 dark:text-slate-400 gap-2 truncate">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-default">
               <FolderOpen size={14} /> {currentChapterName}
             </span>
-            <span className="text-slate-300">/</span>
+            <span className="text-slate-300 dark:text-slate-600">/</span>
             <span className="truncate max-w-[200px]">{title || "未命名"}</span>
           </div>
         </div>
 
-        {/* Top Right Actions */}
         <div className="flex items-center gap-1">
-          <div className="text-xs text-slate-300 mr-2 hidden sm:block">
+          <div className="text-xs text-slate-300 dark:text-slate-600 mr-2 hidden sm:block">
              {isSaving ? "儲存中..." : "已儲存"}
           </div>
           
-          {/* [Feature] 寬度切換按鈕 */}
           <button 
             onClick={() => setIsFullWidth(!isFullWidth)} 
-            className={`p-1.5 rounded transition-colors hidden md:block ${isFullWidth ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
-            title={isFullWidth ? "切換至閱讀模式 (置中)" : "切換至全寬模式"}
+            className={`p-1.5 rounded transition-colors hidden md:block ${isFullWidth ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            title={isFullWidth ? "切換至閱讀模式" : "切換至全寬模式"}
           >
             {isFullWidth ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
 
-          <button onClick={() => onDelete(post.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"><Trash2 size={18} /></button>
+          <button onClick={() => onDelete(post.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"><Trash2 size={18} /></button>
           
           <button 
             onClick={handleSave} 
-            className="ml-2 flex items-center gap-2 px-3 py-1 bg-slate-900 text-white text-sm rounded hover:bg-slate-800 transition-colors shadow-sm"
+            className="ml-2 flex items-center gap-2 px-3 py-1 bg-slate-900 dark:bg-slate-200 text-white dark:text-slate-900 text-sm rounded hover:bg-slate-800 dark:hover:bg-white transition-colors shadow-sm font-medium"
           >
             儲存
           </button>
         </div>
       </div>
 
-      {/* Main Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto">
-        {/* [Feature] 這裡控制寬度：閱讀模式(max-w-3xl) vs 全寬模式(max-w-none) */}
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {/* [Feature] 封面圖片區域 */}
+        <div className="relative group/cover w-full">
+          {coverImage ? (
+            <div className="relative w-full h-48 md:h-72 bg-slate-100 dark:bg-slate-900">
+              <img src={coverImage} alt="Cover" className="w-full h-full object-cover" />
+              <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover/cover:opacity-100 transition-opacity">
+                <label className="bg-white/80 dark:bg-black/50 backdrop-blur text-xs px-3 py-1.5 rounded-md cursor-pointer hover:bg-white dark:hover:bg-black/70 transition-colors shadow-sm">
+                  更換封面
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleCoverImageUpload(e.target.files[0])} />
+                </label>
+                <button 
+                  onClick={() => setCoverImage(null)}
+                  className="bg-white/80 dark:bg-black/50 backdrop-blur text-xs px-3 py-1.5 rounded-md hover:text-red-500 transition-colors shadow-sm"
+                >
+                  移除
+                </button>
+              </div>
+            </div>
+          ) : (
+            // [Feature] 無封面時顯示的按鈕區 (在內容上方)
+            <div className="pt-10 px-10 max-w-3xl mx-auto opacity-0 hover:opacity-100 transition-opacity -mb-10 relative z-10 h-10">
+               <label className="flex items-center gap-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer text-sm w-fit">
+                 <ImageIcon size={16} /> 新增封面
+                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleCoverImageUpload(e.target.files[0])} />
+               </label>
+            </div>
+          )}
+        </div>
+
         <div className={`
-          mx-auto py-10 transition-all duration-300 ease-in-out
+          mx-auto py-12 transition-all duration-300 ease-in-out
           ${isFullWidth ? 'max-w-none px-6 md:px-12' : 'max-w-3xl px-6 md:px-0'}
         `}>
           
-          {/* Cover Image Placeholder (Optional visual cue) */}
-          <div className="group relative h-40 mb-8 -mt-6 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 flex items-center justify-center border border-dashed border-slate-200 text-slate-300 hover:border-slate-300 transition-colors cursor-pointer opacity-50 hover:opacity-100">
-             <div className="flex items-center gap-2 text-sm"><ImageIcon size={16} /> 新增封面 (未來功能)</div>
-          </div>
-
           {/* Title Input */}
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full text-4xl font-bold text-slate-800 border-none outline-none placeholder:text-slate-300 bg-transparent mb-6 leading-tight"
+            className="w-full text-4xl font-bold text-slate-800 dark:text-slate-100 border-none outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 bg-transparent mb-8 leading-tight"
             placeholder="未命名文章"
           />
 
@@ -359,36 +479,35 @@ const BlockEditor = ({ post, chapters, onSave, onDelete, isSidebarOpen, setIsSid
           <div className="space-y-2 pb-32">
             {blocks.map((block, index) => (
               <div key={index} className="group relative transition-all">
-                {/* Drag Handle & Menu (Notion-like left gutter) */}
+                {/* Drag Handle */}
                 <div className="absolute -left-12 top-1.5 w-10 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200 rounded p-0.5 shadow-sm">
-                    <button onClick={() => moveBlock(index, -1)} className="p-0.5 text-slate-400 hover:text-slate-700"><MoveUp size={12} /></button>
-                    <button onClick={() => moveBlock(index, 1)} className="p-0.5 text-slate-400 hover:text-slate-700"><MoveDown size={12} /></button>
+                  <div className="flex items-center gap-0.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-0.5 shadow-sm">
+                    <button onClick={() => moveBlock(index, -1)} className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"><MoveUp size={12} /></button>
+                    <button onClick={() => moveBlock(index, 1)} className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"><MoveDown size={12} /></button>
                     <button onClick={() => removeBlock(index)} className="p-0.5 text-slate-400 hover:text-red-500"><X size={12} /></button>
                   </div>
                 </div>
 
                 <div className="relative">
                   {block.type === 'text' ? (
-                    <textarea
-                      value={block.content}
-                      onChange={(e) => updateBlock(index, e.target.value)}
-                      placeholder="輸入內容，或輸入 '/' 命令..."
-                      className="w-full min-h-[28px] resize-none bg-transparent border-none outline-none text-base text-slate-700 leading-relaxed py-1 px-0 placeholder:text-slate-300"
-                      style={{ height: 'auto' }}
-                      onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                    // [Feature] 改用 ContentBlock 支援 Rich Text
+                    <ContentBlock
+                      html={block.content}
+                      onInput={(content) => updateBlock(index, content)}
+                      placeholder='輸入內容，選取文字可調整樣式...'
+                      className="w-full min-h-[28px] text-base text-slate-700 dark:text-slate-300 leading-relaxed py-1 px-0"
                     />
                   ) : (
                     <div className="relative my-4 group/img">
                        {block.content ? (
                          <div className="relative inline-block max-w-full">
-                           <img src={block.content} alt="Content" className="max-w-full rounded-lg shadow-sm border border-slate-100" />
+                           <img src={block.content} alt="Content" className="max-w-full rounded-lg shadow-sm border border-slate-100 dark:border-slate-800" />
                            <label className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded opacity-0 group-hover/img:opacity-100 cursor-pointer transition-opacity backdrop-blur-sm">
                              更換 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(index, e.target.files[0])} />
                            </label>
                          </div>
                        ) : (
-                         <label className="flex items-center justify-center gap-2 h-32 bg-slate-50 border border-dashed border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100 hover:border-slate-300 text-slate-400 transition-all">
+                         <label className="flex items-center justify-center gap-2 h-32 bg-slate-50 dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 text-slate-400 transition-all">
                            <ImageIcon size={20} /> <span>點擊上傳圖片</span>
                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(index, e.target.files[0])} />
                          </label>
@@ -397,17 +516,17 @@ const BlockEditor = ({ post, chapters, onSave, onDelete, isSidebarOpen, setIsSid
                   )}
                 </div>
 
-                {/* Add Block Trigger (Below each block) */}
+                {/* Add Block Trigger */}
                 <div className="h-2 -mb-2 group-hover:h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all z-10">
-                   <button onClick={() => addBlock(index, 'text')} className="bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full p-1 shadow-sm border border-slate-200 mr-2" title="插入文字"><Type size={12}/></button>
-                   <button onClick={() => addBlock(index, 'image')} className="bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full p-1 shadow-sm border border-slate-200" title="插入圖片"><ImageIcon size={12}/></button>
+                   <button onClick={() => addBlock(index, 'text')} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 rounded-full p-1 shadow-sm border border-slate-200 dark:border-slate-700 mr-2" title="插入文字"><Type size={12}/></button>
+                   <button onClick={() => addBlock(index, 'image')} className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 rounded-full p-1 shadow-sm border border-slate-200 dark:border-slate-700" title="插入圖片"><ImageIcon size={12}/></button>
                 </div>
               </div>
             ))}
             
             {blocks.length === 0 && (
                <div className="flex gap-4 py-4 text-slate-400">
-                  <button onClick={() => addBlock(-1, 'text')} className="flex items-center gap-2 hover:text-slate-600 transition-colors"><Plus size={18} /> 開始輸入...</button>
+                  <button onClick={() => addBlock(-1, 'text')} className="flex items-center gap-2 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"><Plus size={18} /> 開始輸入...</button>
                </div>
             )}
           </div>
@@ -417,14 +536,14 @@ const BlockEditor = ({ post, chapters, onSave, onDelete, isSidebarOpen, setIsSid
   );
 };
 
-// 3. 空狀態 (Notion Style)
+// 5. 空狀態 (Updated with Dark Mode)
 const EmptyState = ({ setIsSidebarOpen }) => (
-  <div className="flex-1 flex flex-col items-center justify-center bg-white text-slate-400 p-8 h-full">
-    <div className="w-16 h-16 bg-slate-50 rounded-xl flex items-center justify-center mb-6 shadow-sm border border-slate-100">
-      <Layout size={32} className="text-slate-300" />
+  <div className="flex-1 flex flex-col items-center justify-center bg-white dark:bg-slate-950 text-slate-400 p-8 h-full transition-colors">
+    <div className="w-16 h-16 bg-slate-50 dark:bg-slate-900 rounded-xl flex items-center justify-center mb-6 shadow-sm border border-slate-100 dark:border-slate-800">
+      <Layout size={32} className="text-slate-300 dark:text-slate-600" />
     </div>
-    <h2 className="text-xl font-semibold text-slate-700 mb-2">準備好紀錄開發歷程了嗎？</h2>
-    <p className="max-w-xs text-center text-sm text-slate-500 mb-8 leading-relaxed">
+    <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-300 mb-2">準備好紀錄開發歷程了嗎？</h2>
+    <p className="max-w-xs text-center text-sm text-slate-500 dark:text-slate-500 mb-8 leading-relaxed">
       點擊左上角 <PanelLeftOpen size={14} className="inline"/> 展開側邊欄，<br/>選擇專案並開始撰寫文章。
     </p>
     <button onClick={() => setIsSidebarOpen(true)} className="md:hidden px-4 py-2 bg-slate-900 text-white rounded text-sm">
@@ -439,7 +558,7 @@ export default function App() {
   const [chapters, setChapters] = useState([]); 
   const [posts, setPosts] = useState([]);
   const [selectedPost, setSelectedPost] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // [State] 側邊欄狀態
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (!db) return;
@@ -470,14 +589,14 @@ export default function App() {
   if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "YOUR_API_KEY") return <div className="h-screen flex items-center justify-center text-slate-500">請設定 Firebase Config</div>;
 
   return (
-    <div className="w-full flex h-screen bg-white font-sans text-slate-900 overflow-hidden selection:bg-emerald-100 selection:text-emerald-900">
+    <div className="w-full flex h-screen bg-white dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 overflow-hidden selection:bg-emerald-100 selection:text-emerald-900">
       <TreeSidebar 
         projects={projects} chapters={chapters} posts={posts} selectedPost={selectedPost} onSelectPost={setSelectedPost}
         onCreateProject={handleCreateProject} onDeleteProject={handleDeleteProject}
         onCreateChapter={handleCreateChapter} onEditChapter={handleEditChapter} onDeleteChapter={handleDeleteChapter} onCreatePost={handleCreatePost}
         isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
       />
-      <main className="flex-1 h-full overflow-hidden bg-white relative flex flex-col transition-all duration-300">
+      <main className="flex-1 h-full overflow-hidden bg-white dark:bg-slate-950 relative flex flex-col transition-all duration-300">
         {selectedPost ? (
           <BlockEditor 
             post={selectedPost} 
